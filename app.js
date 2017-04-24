@@ -50,28 +50,28 @@ app.get('/readMultipleCsv', function(req, res) {
                     .replace(/"/g, '')
                     .split(',');
 
-                 client.get('npiId'+columns[16], function(err, reply) {
+                 client.get('npiI'+columns[16], function(err, reply) {
+
                      if(reply != null){
                         console.log("data: ",reply);
                         if(reply == columns[16]){
                             console.log("duplicate");
                         }
-                        else{
-                            client.set('npiId'+columns[16], columns[16], function(err, reply) {
-                            // console.log(reply);
-                            });
-                        }
-                     }
-                     else{
+                        // else{
+                        //     client.set('npiId'+columns[16], columns[16], function(err, reply) {
+                        //     // console.log(reply);
+                        //     });
+                        // }
+                     } else{
                         console.log("data duplicate: ",reply);
+                        client.set('npiI'+columns[16], columns[16], function(err, reply) {
+                            // console.log(reply);
+                        });
+                        lines.push(columns);
                      }
-                     
-                                   
                 });
 
                 
-               
-                lines.push(columns);
             });
 
             rl.on('close', function () {
