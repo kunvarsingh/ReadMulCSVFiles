@@ -15,6 +15,7 @@ var csvConfig = require('./config/config');
 var app = express();
 var index = require('./routes/index');
 var promises = [];
+var cacheObj = {};
 
 app.use(cors());
 // view engine setup
@@ -129,22 +130,25 @@ var filename="C:/Users/Kunvar/Documents/Archive/";
         matched_canditateKeys=0,
         matched_canditateKeys1=0,
         matched_canditateKeys2=0,
-        matched_canditateKeys3=0;
+        matched_supportingsKey=0;
+    
+    var readFile = function (file,uniq_csv,dup_csv,exp_csv) {
 
-    var readFile = function (file) {
         return new Promise(function (resolve, reject) {
             var lines = [], duplicateLines = [], exceptionLines=[];
             var rl = readline.createInterface({
                 input: fs.createReadStream(csvConfig.csvSettings.sourcePath+file)
             });
+            
             var lineNumber = 1;
+            var getCsvHeader=[];
 
             rl.on('line', function (line) {
                 // Split line on comma and remove quotes
                 var columns = line
                     .replace(/"/g, '')
                     .split(',');
-
+                    
                 if (lineNumber == 1) {
                     for(var i=0;i<columns.length;i++){
                         if (columns[i] == csvConfig.csvSettings.primaryKey) {
@@ -152,145 +156,232 @@ var filename="C:/Users/Kunvar/Documents/Archive/";
                         }
                         if (columns[i] == csvConfig.csvSettings.canditateKeys[0]) {
                             matched_canditateKeys=i;
-                           // console.log("matched_canditateKeys"+matched_canditateKeys);
                         }
-                        // if (columns[i] == csvConfig.csvSettings.canditateKeys[1]) {
-                        //     matched_canditateKeys1=i;
-                        // }
-                        // if (columns[i] == csvConfig.csvSettings.canditateKeys[2]) {
-                        //     matched_canditateKeys2=i;
-                        // }
-                        // if (columns[i] == csvConfig.csvSettings.canditateKeys[3]) {
-                        //     matched_canditateKeys3=i;
-                        // }
+                        if (columns[i] == csvConfig.csvSettings.canditateKeys[1]) {
+                            matched_canditateKeys1=i;
+                        }
+                        if (columns[i] == csvConfig.csvSettings.canditateKeys[2]) {
+                            matched_canditateKeys2=i;
+                        }
+                        if (columns[i] == csvConfig.csvSettings.supportingKeys[0]) {
+                            matched_supportingsKey=i;
+                        }
+                    }
+                    lineNumber++;
+                    getCsvHeader.push(columns);
+                }
+
+                if(columns[matched_primary_key].length >0 ){ //If npi.npi_id is found
+                    //var primaryIndex = csvConfig.csvSettings.primaryKey+columns[matched_primary_key];
+                    var primaryIndex = columns[matched_primary_key];
+                    var primary_val=columns[matched_primary_key];
+
+                    if(cacheObj[primaryIndex]){
+                            if(cacheObj[primaryIndex] == primary_val){
+                               console.log("Id duplicate..."+primary_val);
+                               // when id is same. insert data into duplicate.csv file
+                               duplicateLines.push(columns);
+                            }
+                    }
+                    else{
+                        cacheObj[primaryIndex] = primary_val;
+                        lines.push(columns);// unique entry in output.csv file
                     }
                 }
+                 else{ //npi.npi_id not found          check fname+mname+lname+address is unique then insert into output.csv file
+                    var candidate=getCandidateKeys(getCsvHeader[0],csvConfig.csvSettings.canditateKeys
+                        ,columns,csvConfig.csvSettings.supportingKeys);
 
-                if(columns[matched_primary_key].length >0 ){
-                    client.get(csvConfig.csvSettings.primaryKey+columns[matched_primary_key], function(err, reply) {
-                       // console.log("Reply PP: ",reply);
-                         if(reply != null){
-                            //console.log("duplicate data: ",reply);
-                            if(reply == columns[matched_primary_key]){
-                               console.log("Id duplicate");
-                                // duplicateLines.push(columns);
-                            }
-                         } else{
-                            //console.log("data: ",reply);
-                            client.set(csvConfig.csvSettings.primaryKey+columns[matched_primary_key],
-                                columns[matched_primary_key], function(err, reply) {
-                            });
-                            lines.push(columns);
-                         }
-                    });
-                } else{
-                   // client.set(csvConfig.csvSettings.canditateKeys[0]+columns[3],"abcd");
-                   // console.log("Empty npi id"+csvConfig.csvSettings.canditateKeys[0]+columns[3])
+                   // console.log("canadiafdte keys..."+candidate.keys);
+                    //console.log("canadiafdte values..."+candidate.values);
+                    // var cand_key=columns[matched_canditateKeys]
+                    //             +columns[matched_canditateKeys1]
+                    //             +columns[matched_canditateKeys2];
+                    var cand_key=candidate.keys;
+                    var cand_value=candidate.values;
+                    //var cand_value=columns[matched_supportingsKey];
+                    
+                    if(cacheObj[cand_key]){
+                        if(cacheObj[cand_key] == cand_value){
+                            duplicateLines.push(columns);
+                        }
+                        else{
+                            exceptionLines.push(columns);
+                        }
+                    }
+                    else{
+                        cacheObj[cand_key]=cand_value;
+                        lines.push(columns);
+                    }
 
-                    client.get(csvConfig.csvSettings.canditateKeys[0]+columns[matched_canditateKeys], function(err, reply) {
-                        console.log(csvConfig.csvSettings.canditateKeys[0]
-                            +columns[matched_canditateKeys] + " : "+ reply);
-                        // console.log("Reply: ",reply+",  set values: "+csvConfig.csvSettings.canditateKeys[0]+columns[3]);
-
-                        // var exists=exceptionLines.filter(function(data){
-                        //     return data.indexOf(columns[3]);
-
-                        // });
-                        // console.log("exists"+exists);
-                        if(reply != null){
-                            if(reply == columns[matched_canditateKeys]){
-                                console.log("duplicate name exists");
-                            }
-                         } else{
-                            //console.log("name:"+columns[3]);
-                            client.set(csvConfig.csvSettings.canditateKeys[0]+columns[matched_canditateKeys],
-                                columns[matched_canditateKeys], function(err, reply) {
-                                   //console.log("name column:"+columns[3]);
-                            });
-                         }
-                         exceptionLines.push(columns);
-                    });
+                    // if(cacheObj[cand_key]){
+                    //         if(cacheObj[cand_key] == cand_value){
+                    //            console.log("Name duplicate..."+cand_value);
+                    //            //duplicateLines.push(columns); //When name is same. entry into duplicate.csv file
+                    //            //var cand_address=csvConfig.csvSettings.canditateKeys[3]+columns[matched_canditateKeys3];
+                    //            var cand_address=csvConfig.csvSettings.supportingKeys[0]+columns[matched_supportingsKey];
+                    //            var cand_address_value=columns[matched_supportingsKey];
+                    //            console.log("cand_address"+cand_address+"sfsdfsd"+cand_address_value)
+                    //             if(cacheObj[cand_address]){
+                    //                 if(cacheObj[cand_address]==cand_address_value){
+                    //                     console.log("address is duplicate.."+cand_address_value);
+                    //                    // when address is same. 
+                    //                     duplicateLines.push(columns);
+                    //                 }
+                    //                 else{
+                    //                     //Id missing and f+m+l(name+Address is same)
+                    //                    // enter into exception files
+                    //                      exceptionLines.push(columns);
+                    //                 }
+                    //             }
+                    //             else{
+                    //                 cacheObj[cand_address]=cand_address_value;
+                    //                 duplicateLines.push(columns);
+                    //            }
+                    //         }
+                    // }
+                    // else{
+                    //         cacheObj[cand_key] = cand_value;
+                    //         lines.push(columns);
+                    //        // insert into output.csv file
+                    // }
+                    //when npi_id not found at the first time
+                    //lines.push(columns);
                 }
+               
+                // check if name is not unique 
             });
 
             rl.on('close', function () {
-                // Add newlines to lines
                 
-                // for(var i=1;i<lines[0].length;i++){
-                //     if(lines.columns[i]=="npi.npi_id"){
-                //      console.log("yes i am in");
-                //     }  
-                // }
+                // duplicateLines.unshift(getCsvHeader);
+                // exceptionLines.unshift(getCsvHeader);
+                // lines.shift();
+                // duplicateLines.shift();
+                // exceptionLines.shift();
+                
                 lines = lines.join("\n");
                 duplicateLines=duplicateLines.join("\n");
-                      
-                var obj={ "lines": lines, "duplicateLines": duplicateLines };
-                
-                resolve(lines);
+                exceptionLines=exceptionLines.join("\n");
               
+                uniq_csv.push(lines);
+                dup_csv.push(duplicateLines);
+                exp_csv.push(exceptionLines);
+
+                uniq_csv=uniq_csv.join("\n");
+                dup_csv=dup_csv.join("\n");
+                exp_csv=exp_csv.join("\n");
+
+                var obj={ "lines": uniq_csv, "duplicateLines": dup_csv, "exceptionLines": exp_csv };
+                resolve(obj);
             });
         });
     };
+    
+    var getCandidateKeysIndex=function(columns){
+       
+        return indexValue;
+    }
 
+    var getCandidateKeys=function(columns,candidateKey,columnsValue,supportingKeys){
+        var keys="";
+        var values="";
+
+        var indexValue=[];
+        var supportingIndexs=[];
+        var keyAndValues={};
+        if(candidateKey.length){
+           //var indexValue=[];
+            for(var i=0;i< candidateKey.length;i++){
+                indexValue.push(columns.indexOf(candidateKey[i]));
+                //
+            }
+
+            for(var j=0;j<indexValue.length;j++){
+                keys=keys+columnsValue[indexValue[j]];
+            }
+
+            //looping for supporting keys:
+            for(var i=0;i< supportingKeys.length;i++){
+                supportingIndexs.push(columns.indexOf(supportingKeys[i]));
+                //
+            }
+
+            for(var j=0;j<supportingIndexs.length;j++){
+                values=values+columnsValue[supportingIndexs[j]];
+            }
+
+            keyAndValues={"keys":keys,"values":values};
+            return keyAndValues;
+        }
+    }
     var writeFile = function (data) {
-        
+       console.log("Write function");
         return new Promise(function (resolve, reject) {
-            fs.appendFile(csvConfig.csvSettings.outputPath + 'output.csv', data, 'utf8', function (err) {
+            var a=new Date().toLocaleString();
+            
+            var newDateappend=a.replace(/ /g,'_');
+            var dateAppend=newDateappend.replace(/:/g,'_');
+            var dateAppend1=dateAppend.split('/').join('_');
+            //console.log(dateAppend+"sssss"+dateAppend);
+
+            var fileArr = ["output(","duplicate(","exceptions("];
+            var output = fileArr[0] +dateAppend1 +')'+ '.csv';
+            //console.log(output);
+            var duplicate = fileArr[1] +dateAppend1 + ')'+'.csv';
+            var exceptions = fileArr[2] +dateAppend1 + ')'+'.csv';
+            
+
+            fs.appendFile(csvConfig.csvSettings.outputPath + output,  data[0].lines, 'utf8', function (err) {
                 if (err) {
                     reject('Writing file error!');
                 } else {
                     resolve('Writing file succeeded!');
                 }
             });
-            //for duplicate 
-            //  fs.appendFile(csvConfig.csvSettings.outputPath + 'duplicate.csv', data[1], 'utf8', function (err) {
-            //     if (err) {
-            //         reject('Writing file error!');
-            //     } else {
-            //         resolve('Writing file succeeded!');
-            //     }
-            // });
-
+            fs.appendFile(csvConfig.csvSettings.outputPath + duplicate,  data[0].duplicateLines, 'utf8', function (err) {
+                if (err) {
+                    reject('Writing file error!');
+                } else {
+                    resolve('Writing file succeeded!');
+                }
+            });
+            fs.appendFile(csvConfig.csvSettings.outputPath + exceptions,  data[0].exceptionLines, 'utf8', function (err) {
+                if (err) {
+                    reject('Writing file error!');
+                } else {
+                    resolve('Writing file succeeded!');
+                }
+            });
         });
     };
 
-    // var writeDupFile = function (data) {
-        
-    //     return new Promise(function (resolve, reject) {
-    //         fs.appendFile(csvConfig.csvSettings.outputPath + 'outputDup.csv', data, 'utf8', function (err) {
-    //             if (err) {
-    //                 reject('Writing file error!');
-    //             } else {
-    //                 resolve('Writing file succeeded!');
-    //             }
-    //         });
-    //     });
-    // };
+   
     fs.readdir(csvConfig.csvSettings.sourcePath, function (err, files) {
+        cacheObj = {};
+        var uniq_csv=[];
+        var dup_csv=[];
+        var exp_csv=[];
         for (var i = 0; i < files.length; i++) {
-            promises.push(readFile(files[i]));
-            
+            // This line is the issue.
+           // console.log("FIle name:"+files[i]);
+
+            promises.push(readFile(files[i],uniq_csv,dup_csv,exp_csv));
+            console.log("promises :"+promises);
              if (i == (files.length - 1)) {
                 var results = Promise.all(promises);
-                // console.log("Results",results)
                 results.then(writeFile)
                     .then(function (data) {
                         console.log("data:",data)
                     }).catch(function (err) {
                         console.log(err)
                     });
-                // var results1 = Promise.all(promises[1]);
-                // console.log("Results",results)
-                // results1.then(writeDupFile)
-                //     .then(function (data) {
-                //         console.log("data:",data)
-                //     }).catch(function (err) {
-                //         console.log(err)
-                //     });
              }
         }
     });
 });
+
+
 
 app.use(function(req, res, next) {
   var err = new Error('Not Found');
